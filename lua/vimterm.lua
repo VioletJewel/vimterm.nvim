@@ -9,9 +9,11 @@
 
 local M = {}
 
+local api = vim.api
+
 local auid = nil
 local function au(evts, opts)
-  vim.api.nvim_create_autocmd(evts, vim.tbl_extend('keep', opts, {group=auid}))
+  api.nvim_create_autocmd(evts, vim.tbl_extend('keep', opts, {group=auid}))
 end
 
 local d_termwinkey = '<C-w>'
@@ -19,69 +21,124 @@ local d_autoclose = true
 local d_autostartinsert = true
 local d_abbrevhack = true
 
-local CB = string.char(28) -- <C-\>
-local N = vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true) -- <C-\><C-n>
-local CN = string.char(14) -- <C-n>
+local function keycode(s)
+  return api.nvim_replace_termcodes(s, true, false, true)
+end
+
+local CB = keycode('<C-\\>')
+local CBCn = keycode('<C-\\><C-n>')
+local CBCo = keycode('<C-\\><C-o>')
+local Cn = keycode('<C-n>')
+local Cw = keycode('<C-w>')
+local Ct = keycode('<C-t>')
+local Cb = keycode('<C-b>')
+local Ck = keycode('<C-k>')
+local Cj = keycode('<C-j>')
+local Ch = keycode('<C-h>')
+local Cl = keycode('<C-l>')
+local Up = keycode('<Up>')
+local Down = keycode('<Down>')
+local Left = keycode('<Left>')
+local Right = keycode('<Right>')
 
 function M.setup(opts)
   if not opts then opts = {} end
-  local termwinkey, autoclose, autostartinsert, abbrevhack
-  termwinkey = opts.termwinkey == nil and d_termwinkey or opts.termwinkey
+  local stermwinkey, termwinkey, autoclose, autostartinsert, abbrevhack
+  stermwinkey = opts.termwinkey == nil and d_termwinkey or opts.termwinkey
+  termwinkey = keycode(stermwinkey)
   autoclose = opts.autoclose == nil and d_autoclose or opts.autoclose
   autostartinsert = opts.autostartinsert == nil and d_autostartinsert or opts.autostartinsert
   abbrevhack = opts.abbrevhack == nil and d_abbrevhack or opts.abbrevhack
 
-  auid = vim.api.nvim_create_augroup('vimterm', {})
+  auid = api.nvim_create_augroup('vimterm', {})
 
-  vim.keymap.set( 't', termwinkey, function()
-    local wid = vim.api.nvim_get_current_win()
+  vim.keymap.set( 't', stermwinkey, function()
+    local wid = api.nvim_get_current_win()
     local tcount = {}
     local ch = vim.fn.getcharstr()
 
-    -- {count}
-    if ch ~= '0' then
-      while ch:match('^%d$') do -- count: /[1-9][0-9]*/
+    if ch ~= '0' then -- {count}
+      while ch:match('^%d$') do -- {count} /[1-9][0-9]*/
         tcount[#tcount+1] = ch
         ch = vim.fn.getcharstr()
       end
     end
     local scount = table.concat(tcount, '')
 
-    -- Literal Ctrl-w
-    if ch == '.' then
-      return vim.api.nvim_feedkeys(string.rep(termwinkey, tonumber(scount) or 1), 'nt', true)
-    elseif ch == CB then
-      -- Literal Ctrl-bslash
-      return vim.api.nvim_feedkeys(string.rep(CB, tonumber(scount) or 1), 'nt', false)
-    elseif ch == 'g' then
-      -- Tab Page Navigation: t_CTRL-W_gt, t_CTRL-W_gT
+    if ch == '.' then -- Literal Ctrl-w
+      return api.nvim_feedkeys(string.rep(termwinkey, tonumber(scount) or 1), 'nt', false)
+    elseif ch == CB then -- Literal C-bslash
+      return api.nvim_feedkeys(string.rep(CB, tonumber(scount) or 1), 'nt', false)
+    elseif ch == 'g' then -- Tab Page Navigation: <C-w>gt, <C-w>gT
       ch = ch..vim.fn.getcharstr()
-    elseif ch == 'N' or ch == CN then
-      -- Normal Mode: CTRL-\_N or CTRL-\_CTRL-N
-      return vim.api.nvim_feedkeys(N, 'n', false)
-    elseif ch == '"' then
-      -- Register Paste: t_CTRL-W_quote
+    elseif ch == 'N' or ch == Cn then -- Normal Mode: <C-w>N
+      return api.nvim_feedkeys(CBCn, 'n', false)
+    elseif ch == '"' then -- Register Paste: <C-w>"
       ch = vim.fn.escape(vim.fn.getcharstr())
-      return vim.api.nvim_feedkeys('<C-\\>C-n>'..scount..'"'..ch..'pi', 'nt', true)
+      return api.nvim_feedkeys('<C-\\>C-n>'..scount..'"'..ch..'pi', 'nt', true)
     end
-    vim.w[wid]._vimterm_insert = true
-    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<c-bslash><c-n>'..scount..'<c-w>', true, false, true)..ch, '', false)
+
+    local cbuf = api.nvim_get_current_buf()
+    local nbuf = cbuf
+    if ch == 'w' or ch == Cw then -- <C-w>w
+      local ws = api.nvim_list_wins()
+      local cwnr = api.nvim_win_get_number(api.nvim_get_current_win())
+      local nwnum = scount == '' and (cwnr % #ws + 1) or math.min(#ws, tonumber(scount) or 1)
+      nbuf = api.nvim_win_get_buf(ws[nwnum])
+    elseif ch == 'W' then -- <C-w>W
+      local ws = api.nvim_list_wins()
+      local cwnr = api.nvim_win_get_number(api.nvim_get_current_win())
+      local nwnum = scount == '' and ((cwnr - 1) % #ws + 1) or math.min(#ws, tonumber(scount) or 1)
+      nbuf = api.nvim_win_get_buf(ws[nwnum])
+    elseif ch == 't' or ch == Ct then -- <C-w>t
+      nbuf = api.nvim_win_get_buf(api.nvim_list_wins()[1])
+    elseif ch == 'b' or ch == Cb then -- <C-w>b
+      nbuf = api.nvim_win_get_buf(api.nvim_list_wins()[1])
+      local ws = api.nvim_list_wins()
+      nbuf = api.nvim_win_get_buf(ws[#ws])
+    elseif ch == 'gt' then -- <C-w>gt
+      local ts = api.nvim_list_tabpages()
+      if scount == '' then
+        local ntnr = api.nvim_tabpage_get_number(api.nvim_get_current_tabpage()) % #ts + 1
+        nbuf = api.nvim_win_get_buf(api.nvim_tabpage_get_win(ts[ntnr]))
+      else
+        local ntnr = tonumber(scount)
+        if ntnr <= #ts then
+          nbuf = api.nvim_win_get_buf(api.nvim_tabpage_get_win(ts[ntnr]))
+        end
+      end
+    elseif ch == 'gT' then -- <C-w>gT (note: different than gt: {count} = cyclical)
+      local ts = api.nvim_list_tabpages()
+      local ctnr = api.nvim_tabpage_get_number(api.nvim_get_current_tabpage())
+      local ntnr = ((ctnr - (tonumber(scount) or 1)) % #ts + 1)
+      nbuf = api.nvim_win_get_buf(api.nvim_tabpage_get_win(ts[ntnr]))
+    elseif ch == 'k' or ch == Ck or ch == Up then -- <C-w>k
+      nbuf = vim.fn.winbufnr(vim.fn.winnr'k')
+    elseif ch == 'j' or ch == Cj or ch == Down then -- <C-w>j
+      nbuf = vim.fn.winbufnr(vim.fn.winnr'j')
+    elseif ch == 'h' or ch == Ch or ch == Left then -- <C-w>h
+      nbuf = vim.fn.winbufnr(vim.fn.winnr'h')
+    elseif ch == 'l' or ch == Cl or ch == Right then -- <C-w>l
+      nbuf = vim.fn.winbufnr(vim.fn.winnr'l')
+    end
+
+    vim.w[wid]._vimterm_insert = cbuf ~= nbuf
+    local p = vim.bo[nbuf].buftype == 'terminal' and CBCo or CBCn
+    api.nvim_feedkeys(p..scount..Cw..ch, 'n', false)
   end)
 
   -- :Sterminal for split terminal.
-  vim.api.nvim_create_user_command('Sterminal',
-    '<mods> split | terminal <args>', { nargs='*' })
+  api.nvim_create_user_command('Sterminal', '<mods> split | terminal <args>', { nargs='*' })
 
   -- :STerminal for split terminal (for convenience/accidents).
-  vim.api.nvim_create_user_command('STerminal',
-    '<mods> split | terminal <args>', { nargs='*' })
+  api.nvim_create_user_command('STerminal', '<mods> split | terminal <args>', { nargs='*' })
 
   -- re-enter terminal mode when coming back if left with termwinkey
   au({'BufWinEnter','WinEnter','CmdlineLeave'}, {
     callback = function(evt)
       local win = vim.fn.bufwinid(evt.buf)
       if vim.o.buftype == 'terminal' and vim.w[win]._vimterm_insert then
-        if vim.api.nvim_get_mode().mode ~= 't' then
+        if api.nvim_get_mode().mode ~= 't' then
           vim.cmd'startinsert'
           vim.w[win]._vimterm_insert = false
         end
@@ -93,7 +150,7 @@ function M.setup(opts)
     callback = function(evt)
       if vim.bo.buflisted then
         -- set b:vimterm_name (better than %f statusline flag).
-        local vimterm_name = vim.api.nvim_buf_get_name(0):gsub('%S*:', '')
+        local vimterm_name = api.nvim_buf_get_name(0):gsub('%S*:', '')
         if vimterm_name == vim.o.shell then
           vimterm_name = vimterm_name:gsub('.*/', '')
         end
